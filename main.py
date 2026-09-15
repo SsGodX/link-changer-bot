@@ -72,7 +72,7 @@ def run_web_server():
     server = HTTPServer(("0.0.0.0", PORT), HealthHandler)
     server.serve_forever()
 
-# --- HELPER: CHECK AUTHORIZATION ---
+# --- HELPER: AUTHORIZATION ---
 def is_bot_admin(token: str, user_id: int) -> bool:
     if user_id == OWNER_ID:
         return True
@@ -93,18 +93,23 @@ async def delete_job(context: ContextTypes.DEFAULT_TYPE):
         except Exception:
             pass
 
-# --- UI GENERATOR ---
+# --- START KEYBOARD ---
 def get_start_markup(is_clone: bool):
     buttons = [
-        [InlineKeyboardButton("📢 UPDATE CHANNEL", url=UPDATE_CHANNEL_URL)]
+        [InlineKeyboardButton("📢 ᴜᴘᴅᴀᴛᴇ ᴄʜᴀɴɴᴇʟ", url=UPDATE_CHANNEL_URL)]
     ]
     if is_clone and MAIN_BOT_USERNAME:
         buttons.append([
-            InlineKeyboardButton("🤖 CREATE YOUR OWN BOT", url=f"https://t.me/{MAIN_BOT_USERNAME}?start=clone")
+            InlineKeyboardButton("🤖 ᴄʟᴏɴᴇ ʏᴏᴜʀ ᴏᴡɴ ʙᴏᴛ", url=f"https://t.me/{MAIN_BOT_USERNAME}?start=clone")
         ])
+    else:
+        buttons.append([
+            InlineKeyboardButton("🤖 ᴄʟᴏɴᴇ ʏᴏᴜʀ ᴏᴡɴ ʙᴏᴛ", callback_data="clone_info")
+        ])
+
     buttons.append([
-        InlineKeyboardButton("🔗 GET INVITE LINK", callback_data="get_link"),
-        InlineKeyboardButton("CLOSE", callback_data="close_msg")
+        InlineKeyboardButton("🔗 ɢᴇᴛ ɪɴᴠɪᴛᴇ ʟɪɴᴋ", callback_data="get_link"),
+        InlineKeyboardButton("✖️ ᴄʟᴏsᴇ", callback_data="close_msg")
     ])
     return InlineKeyboardMarkup(buttons)
 
@@ -122,9 +127,24 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         conn.execute("INSERT OR IGNORE INTO users VALUES (?, ?)", (token, user_id))
         conn.commit()
 
-    # Handle Request & Join Links (?start=req_xxx or ?start=join_xxx)
+    # Deep-link handling (?start=req_xxx or ?start=join_xxx)
     if context.args:
         arg = context.args[0]
+        if arg == "clone":
+            clone_help = (
+                "╭── 🤖 <b>ᴄʟᴏɴᴇ ʏᴏᴜʀ ᴏᴡɴ ʙᴏᴛ</b>\n"
+                "│\n"
+                "├── 💡 <b>ʏᴏᴜ ᴄᴀɴ ᴄʟᴏɴᴇ ᴜɴʟɪᴍɪᴛᴇᴅ ʙᴏᴛs ғʀᴏᴍ ᴛʜɪs ʙᴏᴛ!</b>\n"
+                "│\n"
+                "├── 1. ᴏᴘᴇɴ @BotFather ᴀɴᴅ ᴄʀᴇᴀᴛᴇ ᴀ ɴᴇᴡ ʙᴏᴛ.\n"
+                "├── 2. ᴄᴏᴘʏ ʏᴏᴜʀ ʙᴏᴛ ᴀᴘɪ ᴛᴏᴋᴇɴ.\n"
+                "├── 3. sᴇɴᴅ: <code>/clone YOUR_BOT_TOKEN</code>\n"
+                "│\n"
+                "╰── ⚡ <i>ʏᴏᴜʀ ᴘᴇʀsᴏɴᴀʟ ʙᴏᴛ ᴡɪʟʟ sᴛᴀʀᴛ ɪɴsᴛᴀɴᴛʟʏ!</i>"
+            )
+            await update.message.reply_text(clone_help, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("ᴄʟᴏsᴇ", callback_data="close_msg")]]), parse_mode="HTML")
+            return
+
         if arg.startswith("req_") or arg.startswith("join_"):
             is_req = arg.startswith("req_")
             raw_ch = arg.replace("req_", "").replace("join_", "")
@@ -137,7 +157,8 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 invite = await context.bot.create_chat_invite_link(
                     chat_id=ch_id,
                     creates_join_request=is_req,
-                    member_limit=0 if is_req else 1
+                    member_limit=0 if is_req else 1,
+                    expire_date=int(asyncio.get_event_loop().time()) + 59 if not is_req else None
                 )
                 markup = InlineKeyboardMarkup([
                     [InlineKeyboardButton("• JOIN CHANNEL •", url=invite.invite_link)]
@@ -155,9 +176,9 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 context.job_queue.run_once(delete_job, 59, data={"chat_id": chat_id, "msg_ids": [m1.message_id, m2.message_id, update.message.message_id]})
                 return
             except Exception as e:
-                logger.error(f"Invite gen error: {e}")
-                err_text = "╭── ERROR\n╰─ ᴜsᴀɢᴇ: ᴍᴀᴋᴇ sᴜʀᴇ ʙᴏᴛ ɪs ᴀᴅᴍɪɴ ɪɴ ᴄʜᴀɴɴᴇʟ"
-                err = await update.message.reply_text(err_text, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("CLOSE", callback_data="close_msg")]]))
+                logger.error(f"Invite creation failed: {e}")
+                err_text = "╭── ᴇʀʀᴏʀ\n╰─ ᴜsᴀɢᴇ: ᴍᴀᴋᴇ sᴜʀᴇ ʙᴏᴛ ɪs ᴀᴅᴍɪɴ ɪɴ ᴄʜᴀɴɴᴇʟ"
+                err = await update.message.reply_text(err_text, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("ᴄʟᴏsᴇ", callback_data="close_msg")]]))
                 context.job_queue.run_once(delete_job, 15, data={"chat_id": chat_id, "msg_ids": [err.message_id]})
                 return
 
@@ -169,23 +190,25 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if is_clone:
         text = (
-            "╭─ ⚡ <b>LINK CHANGER • CLONE EDITION</b>\n"
+            "╭── 🤖 <b>ʟɪɴᴋ ᴄʜᴀɴɢᴇʀ • ᴄʟᴏɴᴇ ᴇᴅɪᴛɪᴏɴ</b>\n"
             "│\n"
-            "├ 👋 <i>Hello! Welcome to this bot.</i>\n"
-            "├ 🛡️ <b>STATUS:</b> ONLINE (24/7 SECURE)\n"
-            "├ 🤖 <i>This is a cloned bot! Click below to create yours.</i>\n"
+            "├── 👋 <i>ʜᴇʟʟᴏ! ᴡᴇʟᴄᴏᴍᴇ ᴛᴏ ᴛʜɪs ʙᴏᴛ.</i>\n"
+            "├── 🛡️ <b>sᴛᴀᴛᴜs:</b> ᴏɴʟɪɴᴇ (24/7 sᴇᴄᴜʀᴇ)\n"
+            "├── ✨ <b>ʏᴏᴜ ᴄᴀɴ ᴄʟᴏɴᴇ ᴜɴʟɪᴍɪᴛᴇᴅ ʙᴏᴛs ғʀᴏᴍ ᴛʜɪs ʙᴏᴛ!</b>\n"
+            "├── 💡 <i>ᴄʟɪᴄᴋ ᴛʜᴇ ʙᴜᴛᴛᴏɴ ʙᴇʟᴏᴡ ᴛᴏ ᴍᴀᴋᴇ ʏᴏᴜʀ ᴏᴡɴ ʙᴏᴛ.</i>\n"
             "│\n"
-            "╰─ ⏳ <i>ᴛʜɪs ᴍᴇssᴀɢᴇ ᴡɪʟʟ ᴀᴜᴛᴏ-ᴅᴇʟᴇᴛᴇ ɪɴ 59 sᴇᴄᴏɴᴅs...</i>"
+            "╰── ⏳ <i>ᴛʜɪs ᴍᴇssᴀɢᴇ ᴡɪʟʟ ᴀᴜᴛᴏ-ᴅᴇʟᴇᴛᴇ ɪɴ 59 sᴇᴄᴏɴᴅs...</i>"
         )
     else:
         text = (
-            "╭─ ⚡ <b>LINK CHANGER • MASTER EDITION</b>\n"
+            "╭── ⚡ <b>ʟɪɴᴋ ᴄʜᴀɴɢᴇʀ • ᴍᴀsᴛᴇʀ ᴇᴅɪᴛɪᴏɴ</b>\n"
             "│\n"
-            "├ 👋 <i>Hello! Welcome to our official bot.</i>\n"
-            "├ 🛡️ <b>STATUS:</b> ONLINE (24/7 SECURE)\n"
-            "├ 💡 <i>Click the buttons below to proceed.</i>\n"
+            "├── 👋 <i>ʜᴇʟʟᴏ! ᴡᴇʟᴄᴏᴍᴇ ᴛᴏ ᴏᴜʀ ᴏғғɪᴄɪᴀʟ ʙᴏᴛ.</i>\n"
+            "├── 🛡️ <b>sᴛᴀᴛᴜs:</b> ᴏɴʟɪɴᴇ (24/7 sᴇᴄᴜʀᴇ)\n"
+            "├── ✨ <b>ʏᴏᴜ ᴄᴀɴ ᴄʟᴏɴᴇ ᴜɴʟɪᴍɪᴛᴇᴅ ʙᴏᴛs ғʀᴏᴍ ᴛʜɪs ʙᴏᴛ!</b>\n"
+            "├── 💡 <i>ᴄʟɪᴄᴋ ᴛʜᴇ ʙᴜᴛᴛᴏɴs ʙᴇʟᴏᴡ ᴛᴏ ɴᴀᴠɪɢᴀᴛᴇ.</i>\n"
             "│\n"
-            "╰─ ⏳ <i>ᴛʜɪs ᴍᴇssᴀɢᴇ ᴡɪʟʟ ᴀᴜᴛᴏ-ᴅᴇʟᴇᴛᴇ ɪɴ 59 sᴇᴄᴏɴᴅs...</i>"
+            "╰── ⏳ <i>ᴛʜɪs ᴍᴇssᴀɢᴇ ᴡɪʟʟ ᴀᴜᴛᴏ-ᴅᴇʟᴇᴛᴇ ɪɴ 59 sᴇᴄᴏɴᴅs...</i>"
         )
 
     markup = get_start_markup(is_clone)
@@ -207,8 +230,8 @@ async def addch(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if not context.args:
-        text = "╭── ERROR\n╰─ ᴜsᴀɢᴇ: /addch -100xxxxxxxxxx"
-        await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("CLOSE", callback_data="close_msg")]]))
+        text = "╭── ᴇʀʀᴏʀ\n╰─ ᴜsᴀɢᴇ: /addch -100xxxxxxxxxx"
+        await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("ᴄʟᴏsᴇ", callback_data="close_msg")]]))
         return
 
     try:
@@ -226,30 +249,30 @@ async def addch(update: Update, context: ContextTypes.DEFAULT_TYPE):
         join_link = f"https://t.me/{b_user}?start=join_{clean_id}"
 
         res = (
-            f"╭── CHANNEL ADDED SUCCESSFULLY\n"
+            f"╭── ᴄʜᴀɴɴᴇʟ ᴀᴅᴅᴇᴅ sᴜᴄᴄᴇssғᴜʟʟʏ\n"
             f"│\n"
-            f"├── 📢 <b>CHANNEL:</b> {title}\n"
-            f"├── 🆔 <b>CHANNEL ID:</b> <code>{ch_id}</code>\n"
+            f"├── 📢 <b>ᴄʜᴀɴɴᴇʟ:</b> {title}\n"
+            f"├── 🆔 <b>ᴄʜᴀɴɴᴇʟ ɪᴅ:</b> <code>{ch_id}</code>\n"
             f"│\n"
-            f"├── 🔗 <b>INFINITE POST LINKS:</b>\n"
-            f"├── 1. <b>REQUEST LINK:</b>\n"
+            f"├── 🔗 <b>ɪɴғɪɴɪᴛᴇ ᴘᴏsᴛ ʟɪɴᴋs:</b>\n"
+            f"├── 1. <b>ʀᴇǫᴜᴇsᴛ ʟɪɴᴋ:</b>\n"
             f"│   {req_link}\n"
             f"│\n"
-            f"├── 2. <b>DIRECT JOIN LINK:</b>\n"
+            f"├── 2. <b>ᴅɪʀᴇᴄᴛ ᴊᴏɪɴ ʟɪɴᴋ:</b>\n"
             f"│   {join_link}\n"
             f"│\n"
-            f"╰── <b>NOTE: PERMANENT LINK IS FULLY HIDDEN</b>"
+            f"╰── <b>ɴᴏᴛᴇ: ᴘᴇʀᴍᴀɴᴇɴᴛ ʟɪɴᴋ ɪs ғᴜʟʟʏ ʜɪᴅᴅᴇɴ</b>"
         )
         markup = InlineKeyboardMarkup([
-            [InlineKeyboardButton("TEST REQUEST LINK", url=req_link)],
-            [InlineKeyboardButton("TEST JOIN LINK", url=join_link)],
-            [InlineKeyboardButton("CLOSE", callback_data="close_msg")]
+            [InlineKeyboardButton("ᴛᴇsᴛ ʀᴇǫᴜᴇsᴛ ʟɪɴᴋ", url=req_link)],
+            [InlineKeyboardButton("ᴛᴇsᴛ ᴊᴏɪɴ ʟɪɴᴋ", url=join_link)],
+            [InlineKeyboardButton("ᴄʟᴏsᴇ", callback_data="close_msg")]
         ])
         await update.message.reply_text(res, reply_markup=markup, parse_mode="HTML")
     except Exception as e:
         logger.error(f"Addch error: {e}")
-        text = f"╭── ERROR\n╰─ ᴜsᴀɢᴇ: ᴇɴsᴜʀᴇ ʙᴏᴛ ɪs ᴀᴅᴍɪɴ ɪɴ ᴄʜᴀɴɴᴇʟ!\n<code>{e}</code>"
-        await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("CLOSE", callback_data="close_msg")]]), parse_mode="HTML")
+        text = f"╭── ᴇʀʀᴏʀ\n╰─ ᴜsᴀɢᴇ: ᴇɴsᴜʀᴇ ʙᴏᴛ ɪs ᴀᴅᴍɪɴ ɪɴ ᴄʜᴀɴɴᴇʟ!\n<code>{e}</code>"
+        await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("ᴄʟᴏsᴇ", callback_data="close_msg")]]), parse_mode="HTML")
 
 # --- COMMAND: /delch ---
 async def delch(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -259,8 +282,8 @@ async def delch(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if not context.args:
-        text = "╭── ERROR\n╰─ ᴜsᴀɢᴇ: /delch -100xxxxxxxxxx"
-        await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("CLOSE", callback_data="close_msg")]]))
+        text = "╭── ᴇʀʀᴏʀ\n╰─ ᴜsᴀɢᴇ: /delch -100xxxxxxxxxx"
+        await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("ᴄʟᴏsᴇ", callback_data="close_msg")]]))
         return
 
     try:
@@ -268,9 +291,9 @@ async def delch(update: Update, context: ContextTypes.DEFAULT_TYPE):
         with get_db() as conn:
             conn.execute("DELETE FROM channels WHERE token = ? AND channel_id = ?", (token, ch_id))
             conn.commit()
-        await update.message.reply_text(f"╭── SUCCESS\n╰─ ᴜɴʟɪɴᴋᴇᴅ ᴄʜᴀɴɴᴇʟ: <code>{ch_id}</code>", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("CLOSE", callback_data="close_msg")]]), parse_mode="HTML")
+        await update.message.reply_text(f"╭── sᴜᴄᴄᴇss\n╰─ ᴜɴʟɪɴᴋᴇᴅ ᴄʜᴀɴɴᴇʟ: <code>{ch_id}</code>", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("ᴄʟᴏsᴇ", callback_data="close_msg")]]), parse_mode="HTML")
     except ValueError:
-        await update.message.reply_text("╭── ERROR\n╰─ ᴜsᴀɢᴇ: ɪɴᴠᴀʟɪᴅ ᴄʜᴀɴɴᴇʟ ɪᴅ", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("CLOSE", callback_data="close_msg")]]))
+        await update.message.reply_text("╭── ᴇʀʀᴏʀ\n╰─ ᴜsᴀɢᴇ: ɪɴᴠᴀʟɪᴅ ᴄʜᴀɴɴᴇʟ ɪᴅ", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("ᴄʟᴏsᴇ", callback_data="close_msg")]]))
 
 # --- COMMAND: /channels ---
 async def channels(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -285,20 +308,20 @@ async def channels(update: Update, context: ContextTypes.DEFAULT_TYPE):
         rows = c.fetchall()
 
     if not rows:
-        await update.message.reply_text("╭── ERROR\n╰─ ɴᴏ ᴄᴏɴɴᴇᴄᴛᴇᴅ ᴄʜᴀɴɴᴇʟs. ᴜsᴇ /addch", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("CLOSE", callback_data="close_msg")]]))
+        await update.message.reply_text("╭── ᴇʀʀᴏʀ\n╰─ ɴᴏ ᴄᴏɴɴᴇᴄᴛᴇᴅ ᴄʜᴀɴɴᴇʟs. ᴜsᴇ /addch", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("ᴄʟᴏsᴇ", callback_data="close_msg")]]))
         return
 
     b_user = context.bot.username
-    res = "╭── ALL CONNECTED CHANNELS\n│\n"
+    res = "╭── ᴀʟʟ ᴄᴏɴɴᴇᴄᴛᴇᴅ ᴄʜᴀɴɴᴇʟs\n│\n"
     buttons = []
     for ch_id, title in rows:
         clean_id = str(ch_id).replace("-100", "")
         req_link = f"https://t.me/{b_user}?start=req_{clean_id}"
         res += f"├── • {title} (<code>{ch_id}</code>)\n│    {req_link}\n"
-        buttons.append([InlineKeyboardButton(f"OPEN {title}", url=req_link)])
+        buttons.append([InlineKeyboardButton(f"ᴏᴘᴇɴ {title}", url=req_link)])
 
-    res += f"│\n╰── <b>TOTAL ACTIVE NODES: {len(rows)}</b>"
-    buttons.append([InlineKeyboardButton("CLOSE", callback_data="close_msg")])
+    res += f"│\n╰── <b>ᴛᴏᴛᴀʟ ᴀᴄᴛɪᴠᴇ ɴᴏᴅᴇs: {len(rows)}</b>"
+    buttons.append([InlineKeyboardButton("ᴄʟᴏsᴇ", callback_data="close_msg")])
 
     await update.message.reply_text(res, reply_markup=InlineKeyboardMarkup(buttons), parse_mode="HTML", disable_web_page_preview=True)
 
@@ -314,24 +337,24 @@ async def status_msg(token: str, bot_obj):
         row = c.fetchone()
         pic, auto_app, delay = (row[0], row[1], row[2]) if row else (None, 1, 0)
 
-    branding = "SET" if pic else "NOT SET"
-    app_status = "ON" if auto_app else "OFF"
+    branding = "sᴇᴛ" if pic else "ɴᴏᴛ sᴇᴛ"
+    app_status = "ᴏɴ" if auto_app else "ᴏғғ"
 
     text = (
-        "╭── SYSTEM STATUS OVERVIEW\n"
+        "╭── sʏsᴛᴇᴍ sᴛᴀᴛᴜs ᴏᴠᴇʀᴠɪᴇᴡ\n"
         "│\n"
-        "├── ⚡ <b>CORE ENGINE:</b> ONLINE (CONCURRENT)\n"
-        f"├── 📢 <b>CONNECTED CHANNELS:</b> {ch_count}\n"
-        f"├── 👥 <b>TOTAL USERS:</b> {u_count}\n"
-        f"├── 🖼️ <b>CUSTOM BRANDING:</b> {branding}\n"
-        f"├── ⚙️ <b>AUTO-APPROVAL:</b> {app_status}\n"
-        f"├── ⏱️ <b>APPROVAL DELAY:</b> {delay}s\n"
+        "├── ⚡ <b>ᴄᴏʀᴇ ᴇɴɢɪɴᴇ:</b> ᴏɴʟɪɴᴇ (ᴄᴏɴᴄᴜʀʀᴇɴᴛ)\n"
+        f"├── 📢 <b>ᴄᴏɴɴᴇᴄᴛᴇᴅ ᴄʜᴀɴɴᴇʟs:</b> {ch_count}\n"
+        f"├── 👥 <b>ᴛᴏᴛᴀʟ ᴜsᴇʀs:</b> {u_count}\n"
+        f"├── 🖼️ <b>ᴄᴜsᴛᴏᴍ ʙʀᴀɴᴅɪɴɢ:</b> {branding}\n"
+        f"├── ⚙️ <b>ᴀᴜᴛᴏ-ᴀᴘᴘʀᴏᴠᴀʟ:</b> {app_status}\n"
+        f"├── ⏱️ <b>ᴀᴘᴘʀᴏᴠᴀʟ ᴅᴇʟᴀʏ:</b> {delay}s\n"
         "│\n"
-        "╰── <b>DATABASE: WAL-MODE ACTIVE</b>"
+        "╰── <b>ᴅᴀᴛᴀʙᴀsᴇ: ᴡᴀʟ-ᴍᴏᴅᴇ ᴀᴄᴛɪᴠᴇ</b>"
     )
     markup = InlineKeyboardMarkup([
-        [InlineKeyboardButton("REFRESH STATS", callback_data="refresh_stats")],
-        [InlineKeyboardButton("CLOSE", callback_data="close_msg")]
+        [InlineKeyboardButton("ʀᴇғʀᴇsʜ sᴛᴀᴛs", callback_data="refresh_stats")],
+        [InlineKeyboardButton("ᴄʟᴏsᴇ", callback_data="close_msg")]
     ])
     return text, markup
 
@@ -352,8 +375,8 @@ async def approve_toggle(update: Update, context: ContextTypes.DEFAULT_TYPE, sta
 
     cmd = "approveon" if status_val == 1 else "approveoff"
     if not context.args:
-        text = f"╭── ERROR\n╰─ ᴜsᴀɢᴇ: /{cmd} -100xxxxxxxxxx"
-        await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("CLOSE", callback_data="close_msg")]]))
+        text = f"╭── ᴇʀʀᴏʀ\n╰─ ᴜsᴀɢᴇ: /{cmd} -100xxxxxxxxxx"
+        await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("ᴄʟᴏsᴇ", callback_data="close_msg")]]))
         return
 
     try:
@@ -361,10 +384,10 @@ async def approve_toggle(update: Update, context: ContextTypes.DEFAULT_TYPE, sta
         with get_db() as conn:
             conn.execute("UPDATE channels SET auto_approve = ? WHERE token = ? AND channel_id = ?", (status_val, token, ch_id))
             conn.commit()
-        s_text = "ENABLED" if status_val == 1 else "DISABLED"
-        await update.message.reply_text(f"╭── AUTO-APPROVAL\n╰─ ᴀᴜᴛᴏ-ᴀᴘᴘʀᴏᴠᴀʟ {s_text} ғᴏʀ: <code>{ch_id}</code>", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("CLOSE", callback_data="close_msg")]]), parse_mode="HTML")
+        s_text = "ᴇɴᴀʙʟᴇᴅ" if status_val == 1 else "ᴅɪsᴀʙʟᴇᴅ"
+        await update.message.reply_text(f"╭── ᴀᴜᴛᴏ-ᴀᴘᴘʀᴏᴠᴀʟ\n╰─ ᴀᴜᴛᴏ-ᴀᴘᴘʀᴏᴠᴀʟ {s_text} ғᴏʀ: <code>{ch_id}</code>", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("ᴄʟᴏsᴇ", callback_data="close_msg")]]), parse_mode="HTML")
     except ValueError:
-        await update.message.reply_text("╭── ERROR\n╰─ ᴜsᴀɢᴇ: ɪɴᴠᴀʟɪᴅ ᴄʜᴀɴɴᴇʟ ɪᴅ", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("CLOSE", callback_data="close_msg")]]))
+        await update.message.reply_text("╭── ᴇʀʀᴏʀ\n╰─ ᴜsᴀɢᴇ: ɪɴᴠᴀʟɪᴅ ᴄʜᴀɴɴᴇʟ ɪᴅ", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("ᴄʟᴏsᴇ", callback_data="close_msg")]]))
 
 # --- AUTO APPROVAL JOIN REQUEST HANDLER ---
 async def join_request_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -402,9 +425,9 @@ async def setpic(update: Update, context: ContextTypes.DEFAULT_TYPE):
         with get_db() as conn:
             conn.execute("UPDATE bots SET header_pic = ? WHERE token = ?", (file_id, token))
             conn.commit()
-        await update.message.reply_text("╭── SUCCESS\n╰─ ᴄᴜsᴛᴏᴍ ʙʀᴀɴᴅɪɴɢ ʜᴇᴀᴅᴇʀ ɪᴍᴀɢᴇ sᴇᴛ!", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("CLOSE", callback_data="close_msg")]]))
+        await update.message.reply_text("╭── sᴜᴄᴄᴇss\n╰─ ᴄᴜsᴛᴏᴍ ʙʀᴀɴᴅɪɴɢ ʜᴇᴀᴅᴇʀ ɪᴍᴀɢᴇ sᴇᴛ!", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("ᴄʟᴏsᴇ", callback_data="close_msg")]]))
     else:
-        await update.message.reply_text("╭── ERROR\n╰─ ᴜsᴀɢᴇ: ʀᴇᴘʟʏ ᴛᴏ ᴀ ᴘʜᴏᴛᴏ ᴡɪᴛʜ /setpic", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("CLOSE", callback_data="close_msg")]]))
+        await update.message.reply_text("╭── ᴇʀʀᴏʀ\n╰─ ᴜsᴀɢᴇ: ʀᴇᴘʟʏ ᴛᴏ ᴀ ᴘʜᴏᴛᴏ ᴡɪᴛʜ /setpic", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("ᴄʟᴏsᴇ", callback_data="close_msg")]]))
 
 async def unsetpic(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -415,7 +438,7 @@ async def unsetpic(update: Update, context: ContextTypes.DEFAULT_TYPE):
     with get_db() as conn:
         conn.execute("UPDATE bots SET header_pic = NULL WHERE token = ?", (token,))
         conn.commit()
-    await update.message.reply_text("╭── SUCCESS\n╰─ ᴄᴜsᴛᴏᴍ ʙʀᴀɴᴅɪɴɢ ʜᴇᴀᴅᴇʀ ɪᴍᴀɢᴇ ʀᴇᴍᴏᴠᴇᴅ!", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("CLOSE", callback_data="close_msg")]]))
+    await update.message.reply_text("╭── sᴜᴄᴄᴇss\n╰─ ᴄᴜsᴛᴏᴍ ʙʀᴀɴᴅɪɴɢ ʜᴇᴀᴅᴇʀ ɪᴍᴀɢᴇ ʀᴇᴍᴏᴠᴇᴅ!", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("ᴄʟᴏsᴇ", callback_data="close_msg")]]))
 
 # --- COMMAND: /reqtime & /reqmode ---
 async def reqtime(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -424,16 +447,16 @@ async def reqtime(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_bot_admin(token, user_id):
         return
     if not context.args:
-        await update.message.reply_text("╭── ERROR\n╰─ ᴜsᴀɢᴇ: /reqtime <seconds>", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("CLOSE", callback_data="close_msg")]]))
+        await update.message.reply_text("╭── ᴇʀʀᴏʀ\n╰─ ᴜsᴀɢᴇ: /reqtime <seconds>", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("ᴄʟᴏsᴇ", callback_data="close_msg")]]))
         return
     try:
         sec = int(context.args[0])
         with get_db() as conn:
             conn.execute("UPDATE bots SET approval_delay = ? WHERE token = ?", (sec, token))
             conn.commit()
-        await update.message.reply_text(f"╭── SUCCESS\n╰─ ᴀᴘᴘʀᴏᴠᴀʟ ʙᴜғғᴇʀ ᴅᴇʟᴀʏ sᴇᴛ ᴛᴏ: {sec}s", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("CLOSE", callback_data="close_msg")]]))
+        await update.message.reply_text(f"╭── sᴜᴄᴄᴇss\n╰─ ᴀᴘᴘʀᴏᴠᴀʟ ʙᴜғғᴇʀ ᴅᴇʟᴀʏ sᴇᴛ ᴛᴏ: {sec}s", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("ᴄʟᴏsᴇ", callback_data="close_msg")]]))
     except ValueError:
-        await update.message.reply_text("╭── ERROR\n╰─ ᴜsᴀɢᴇ: ɪɴᴠᴀʟɪᴅ sᴇᴄᴏɴᴅs ᴠᴀʟᴜᴇ", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("CLOSE", callback_data="close_msg")]]))
+        await update.message.reply_text("╭── ᴇʀʀᴏʀ\n╰─ ᴜsᴀɢᴇ: ɪɴᴠᴀʟɪᴅ sᴇᴄᴏɴᴅs ᴠᴀʟᴜᴇ", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("ᴄʟᴏsᴇ", callback_data="close_msg")]]))
 
 async def reqmode(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -448,7 +471,7 @@ async def reqmode(update: Update, context: ContextTypes.DEFAULT_TYPE):
         new_val = 0 if cur == 1 else 1
         conn.execute("UPDATE bots SET auto_approve = ? WHERE token = ?", (new_val, token))
         conn.commit()
-    await update.message.reply_text(f"╭── AUTO-APPROVAL\n╰─ ɢʟᴏʙᴀʟ ᴍᴏᴅᴇ: {'ON' if new_val == 1 else 'OFF'}", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("CLOSE", callback_data="close_msg")]]))
+    await update.message.reply_text(f"╭── ᴀᴜᴛᴏ-ᴀᴘᴘʀᴏᴠᴀʟ\n╰─ ɢʟᴏʙᴀʟ ᴍᴏᴅᴇ: {'ᴏɴ' if new_val == 1 else 'ᴏғғ'}", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("ᴄʟᴏsᴇ", callback_data="close_msg")]]))
 
 # --- CALLBACK ROUTER ---
 async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -463,6 +486,21 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.message.delete()
         except Exception:
             pass
+
+    elif data == "clone_info":
+        await query.answer()
+        clone_help = (
+            "╭── 🤖 <b>ᴄʟᴏɴᴇ ʏᴏᴜʀ ᴏᴡɴ ʙᴏᴛ</b>\n"
+            "│\n"
+            "├── 💡 <b>ʏᴏᴜ ᴄᴀɴ ᴄʟᴏɴᴇ ᴜɴʟɪᴍɪᴛᴇᴅ ʙᴏᴛs ғʀᴏᴍ ᴛʜɪs ʙᴏᴛ!</b>\n"
+            "│\n"
+            "├── 1. ᴏᴘᴇɴ @BotFather ᴀɴᴅ ᴄʀᴇᴀᴛᴇ ᴀ ɴᴇᴡ ʙᴏᴛ.\n"
+            "├── 2. ᴄᴏᴘʏ ʏᴏᴜʀ ʙᴏᴛ ᴀᴘɪ ᴛᴏᴋᴇɴ.\n"
+            "├── 3. sᴇɴᴅ ʜᴇʀᴇ: <code>/clone YOUR_BOT_TOKEN</code>\n"
+            "│\n"
+            "╰── ⚡ <i>ʏᴏᴜʀ ᴘᴇʀsᴏɴᴀʟ ʙᴏᴛ ᴡɪʟʟ sᴛᴀʀᴛ ɪɴsᴛᴀɴᴛʟʏ!</i>"
+        )
+        await query.message.reply_text(clone_help, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("ᴄʟᴏsᴇ", callback_data="close_msg")]]), parse_mode="HTML")
 
     elif data == "refresh_stats":
         await query.answer("Refreshing stats...")
@@ -480,19 +518,19 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
             row = c.fetchone()
 
         if not row:
-            msg = await query.message.reply_text("╭── ERROR\n╰─ ᴜsᴀɢᴇ: ɴᴏ ᴄʜᴀɴɴᴇʟ ᴄᴏɴғɪɢᴜʀᴇᴅ ʏᴇᴛ.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("CLOSE", callback_data="close_msg")]]))
+            msg = await query.message.reply_text("╭── ᴇʀʀᴏʀ\n╰─ ᴜsᴀɢᴇ: ɴᴏ ᴄʜᴀɴɴᴇʟ ᴄᴏɴғɪɢᴜʀᴇᴅ ʏᴇᴛ.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("ᴄʟᴏsᴇ", callback_data="close_msg")]]))
             context.job_queue.run_once(delete_job, 15, data={"chat_id": chat_id, "msg_ids": [msg.message_id]})
             return
 
         try:
-            invite = await context.bot.create_chat_invite_link(chat_id=row[0], member_limit=1)
+            invite = await context.bot.create_chat_invite_link(chat_id=row[0], member_limit=1, expire_date=int(asyncio.get_event_loop().time()) + 59)
             markup = InlineKeyboardMarkup([[InlineKeyboardButton("• JOIN CHANNEL •", url=invite.invite_link)]])
             m1 = await context.bot.send_message(chat_id=chat_id, text="HERE IS YOUR LINK! CLICK BELOW TO PROCEED", reply_markup=markup, protect_content=True)
             m2 = await context.bot.send_message(chat_id=chat_id, text="<u>Note: If the link is expired, please click the post link again to get a new one.</u>", parse_mode="HTML", protect_content=True)
             context.job_queue.run_once(delete_job, 59, data={"chat_id": chat_id, "msg_ids": [m1.message_id, m2.message_id]})
         except Exception as e:
             logger.error(f"Link gen error: {e}")
-            err = await query.message.reply_text("╭── ERROR\n╰─ ᴜsᴀɢᴇ: ɢɪᴠᴇ 'ᴀᴅᴅ ᴜsᴇʀs' ʀɪɢʜᴛs ᴛᴏ ʙᴏᴛ", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("CLOSE", callback_data="close_msg")]]))
+            err = await query.message.reply_text("╭── ᴇʀʀᴏʀ\n╰─ ᴜsᴀɢᴇ: ɢɪᴠᴇ 'ᴀᴅᴅ ᴜsᴇʀs' ʀɪɢʜᴛs ᴛᴏ ʙᴏᴛ", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("ᴄʟᴏsᴇ", callback_data="close_msg")]]))
             context.job_queue.run_once(delete_job, 15, data={"chat_id": chat_id, "msg_ids": [err.message_id]})
 
 # --- COMMAND: /clone ---
@@ -500,15 +538,17 @@ async def clone(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if not context.args:
         text = (
-            "╭─ 🤖 <b>CLONE YOUR OWN BOT</b>\n"
+            "╭── 🤖 <b>ᴄʟᴏɴᴇ ʏᴏᴜʀ ᴏᴡɴ ʙᴏᴛ</b>\n"
             "│\n"
-            "├ 1. Open @BotFather and create a new bot.\n"
-            "├ 2. Copy the API Token.\n"
-            "├ 3. Send here: <code>/clone YOUR_BOT_TOKEN</code>\n"
+            "├── 💡 <b>ʏᴏᴜ ᴄᴀɴ ᴄʟᴏɴᴇ ᴜɴʟɪᴍɪᴛᴇᴅ ʙᴏᴛs ғʀᴏᴍ ᴛʜɪs ʙᴏᴛ!</b>\n"
             "│\n"
-            "╰─ ⚡ <i>ʏᴏᴜʀ ᴘᴇʀsᴏɴᴀʟ ʙᴏᴛ ᴡɪʟʟ ʙᴇ ʟɪᴠᴇ ɪɴsᴛᴀɴᴛʟʏ!</i>"
+            "├── 1. ᴏᴘᴇɴ @BotFather ᴀɴᴅ ᴄʀᴇᴀᴛᴇ ᴀ ɴᴇᴡ ʙᴏᴛ.\n"
+            "├── 2. ᴄᴏᴘʏ ᴛʜᴇ ᴀᴘɪ ᴛᴏᴋᴇɴ.\n"
+            "├── 3. sᴇɴᴅ ʜᴇʀᴇ: <code>/clone YOUR_BOT_TOKEN</code>\n"
+            "│\n"
+            "╰── ⚡ <i>ʏᴏᴜʀ ᴘᴇʀsᴏɴᴀʟ ʙᴏᴛ ᴡɪʟʟ ʙᴇ ʟɪᴠᴇ ɪɴsᴛᴀɴᴛʟʏ!</i>"
         )
-        await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("CLOSE", callback_data="close_msg")]]), parse_mode="HTML")
+        await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("ᴄʟᴏsᴇ", callback_data="close_msg")]]), parse_mode="HTML")
         return
 
     new_token = context.args[0].strip()
@@ -524,22 +564,22 @@ async def clone(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         asyncio.create_task(run_cloned_bot(new_token))
         res = (
-            "╭─ 🎉 <b>BOT CLONED SUCCESSFULLY!</b>\n"
+            "╭── 🎉 <b>ʙᴏᴛ ᴄʟᴏɴᴇᴅ sᴜᴄᴄᴇssғᴜʟʟʏ!</b>\n"
             "│\n"
-            f"├ 🤖 <b>BOT:</b> @{bot_info.username}\n"
-            f"├ 👑 <b>OWNER ID:</b> <code>{user_id}</code>\n"
-            "├ 📋 <b>SIDE MENU COMMANDS:</b> Configured automatically!\n"
+            f"├── 🤖 <b>ʙᴏᴛ:</b> @{bot_info.username}\n"
+            f"├── 👑 <b>ᴏᴡɴᴇʀ ɪᴅ:</b> <code>{user_id}</code>\n"
+            "├── 📋 <b>sɪᴅᴇ ᴍᴇɴᴜ ᴄᴏᴍᴍᴀɴᴅs:</b> ᴄᴏɴғɪɢᴜʀᴇᴅ ᴀᴜᴛᴏᴍᴀᴛɪᴄᴀʟʟʏ!\n"
             "│\n"
-            "├ <b>NEXT STEPS:</b>\n"
-            f"├ 1. Promote @{bot_info.username} to Admin in your channel.\n"
-            "├ 2. Send <code>/addch -100xxxxxxxxxx</code> inside your bot.\n"
+            "├── <b>ɴᴇxᴛ sᴛᴇᴘs:</b>\n"
+            f"├── 1. ᴘʀᴏᴍᴏᴛᴇ @{bot_info.username} ᴛᴏ ᴀᴅᴍɪɴ ɪɴ ʏᴏᴜʀ ᴄʜᴀɴɴᴇʟ.\n"
+            "├── 2. sᴇɴᴅ <code>/addch -100xxxxxxxxxx</code> ɪɴsɪᴅᴇ ʏᴏᴜʀ ʙᴏᴛ.\n"
             "│\n"
-            "╰─ 🚀 <i>ʏᴏᴜʀ ᴄʟᴏɴᴇ ɪs ᴏɴʟɪɴᴇ 24/7!</i>"
+            "╰── 🚀 <i>ʏᴏᴜʀ ᴄʟᴏɴᴇ ɪs ᴏɴʟɪɴᴇ 24/7!</i>"
         )
-        await update.message.reply_text(res, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("CLOSE", callback_data="close_msg")]]), parse_mode="HTML")
+        await update.message.reply_text(res, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("ᴄʟᴏsᴇ", callback_data="close_msg")]]), parse_mode="HTML")
     except Exception as e:
         logger.error(f"Clone error: {e}")
-        await update.message.reply_text("╭── ERROR\n╰─ ᴜsᴀɢᴇ: ɪɴᴠᴀʟɪᴅ ᴛᴏᴋᴇɴ ғʀᴏᴍ @BotFather", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("CLOSE", callback_data="close_msg")]]))
+        await update.message.reply_text("╭── ᴇʀʀᴏʀ\n╰─ ᴜsᴀɢᴇ: ɪɴᴠᴀʟɪᴅ ᴛᴏᴋᴇɴ ғʀᴏᴍ @BotFather", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("ᴄʟᴏsᴇ", callback_data="close_msg")]]))
 
 # --- ATTACH HANDLERS ---
 def attach_handlers(app):
