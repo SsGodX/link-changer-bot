@@ -1,4 +1,5 @@
 import os
+import time
 import asyncio
 import sqlite3
 import threading
@@ -82,11 +83,26 @@ def is_bot_admin(token: str, user_id: int) -> bool:
         row = c.fetchone()
         return bool(row and row[0] == user_id)
 
-# --- AUTO-DELETE JOB (59s) ---
-async def delete_job(context: ContextTypes.DEFAULT_TYPE):
+# --- AUTO EXPIRE LINK & DELETE MESSAGES (59s) ---
+async def expire_and_delete_job(context: ContextTypes.DEFAULT_TYPE):
     job_data = context.job.data
     chat_id = job_data["chat_id"]
-    msg_ids = job_data["msg_ids"]
+    msg_ids = job_data.get("msg_ids", [])
+    ch_id = job_data.get("ch_id")
+    invite_url = job_data.get("invite_url")
+
+    # 1. Telegram चैनल पर लिंक को तुरंत Expire/Revoke करना
+    if ch_id and invite_url:
+        try:
+            await context.bot.revoke_chat_invite_link(
+                chat_id=ch_id,
+                invite_link=invite_url
+            )
+            logger.info(f"Revoked & Expired invite link successfully for channel {ch_id}")
+        except Exception as e:
+            logger.error(f"Failed to revoke invite link: {e}")
+
+    # 2. यूज़र की चैट से दोनों मैसेज डिलीट करना
     for mid in msg_ids:
         try:
             await context.bot.delete_message(chat_id=chat_id, message_id=mid)
@@ -154,11 +170,13 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 return
 
             try:
+                # 60s Telegram API expire + bot auto revoke on 59s
+                expire_timestamp = int(time.time()) + 60
                 invite = await context.bot.create_chat_invite_link(
                     chat_id=ch_id,
                     creates_join_request=is_req,
                     member_limit=0 if is_req else 1,
-                    expire_date=int(asyncio.get_event_loop().time()) + 59 if not is_req else None
+                    expire_date=expire_timestamp
                 )
                 markup = InlineKeyboardMarkup([
                     [InlineKeyboardButton("• JOIN CHANNEL •", url=invite.invite_link)]
@@ -173,13 +191,24 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     parse_mode="HTML",
                     protect_content=True
                 )
-                context.job_queue.run_once(delete_job, 59, data={"chat_id": chat_id, "msg_ids": [m1.message_id, m2.message_id, update.message.message_id]})
+                
+                # 59 सेकंड का टाइमर: लिंक रिवोक करेगा और दोनों मैसेज डिलीट करेगा
+                context.job_queue.run_once(
+                    expire_and_delete_job, 
+                    59, 
+                    data={
+                        "chat_id": chat_id, 
+                        "msg_ids": [m1.message_id, m2.message_id, update.message.message_id],
+                        "ch_id": ch_id,
+                        "invite_url": invite.invite_link
+                    }
+                )
                 return
             except Exception as e:
                 logger.error(f"Invite creation failed: {e}")
                 err_text = "╭── ᴇʀʀᴏʀ\n╰─ ᴜsᴀɢᴇ: ᴍᴀᴋᴇ sᴜʀᴇ ʙᴏᴛ ɪs ᴀᴅᴍɪɴ ɪɴ ᴄʜᴀɴɴᴇʟ"
                 err = await update.message.reply_text(err_text, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("ᴄʟᴏsᴇ", callback_data="close_msg")]]))
-                context.job_queue.run_once(delete_job, 15, data={"chat_id": chat_id, "msg_ids": [err.message_id]})
+                context.job_queue.run_once(expire_and_delete_job, 15, data={"chat_id": chat_id, "msg_ids": [err.message_id]})
                 return
 
     with get_db() as conn:
@@ -220,7 +249,7 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         s_msg = await update.message.reply_text(text, reply_markup=markup, parse_mode="HTML", protect_content=True)
 
-    context.job_queue.run_once(delete_job, 59, data={"chat_id": chat_id, "msg_ids": [s_msg.message_id, update.message.message_id]})
+    context.job_queue.run_once(expire_and_delete_job, 59, data={"chat_id": chat_id, "msg_ids": [s_msg.message_id, update.message.message_id]})
 
 # --- COMMAND: /addch ---
 async def addch(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -519,19 +548,35 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         if not row:
             msg = await query.message.reply_text("╭── ᴇʀʀᴏʀ\n╰─ ᴜsᴀɢᴇ: ɴᴏ ᴄʜᴀɴɴᴇʟ ᴄᴏɴғɪɢᴜʀᴇᴅ ʏᴇᴛ.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("ᴄʟᴏsᴇ", callback_data="close_msg")]]))
-            context.job_queue.run_once(delete_job, 15, data={"chat_id": chat_id, "msg_ids": [msg.message_id]})
+            context.job_queue.run_once(expire_and_delete_job, 15, data={"chat_id": chat_id, "msg_ids": [msg.message_id]})
             return
 
+        target_ch = row[0]
         try:
-            invite = await context.bot.create_chat_invite_link(chat_id=row[0], member_limit=1, expire_date=int(asyncio.get_event_loop().time()) + 59)
+            expire_timestamp = int(time.time()) + 60
+            invite = await context.bot.create_chat_invite_link(
+                chat_id=target_ch, 
+                member_limit=1, 
+                expire_date=expire_timestamp
+            )
             markup = InlineKeyboardMarkup([[InlineKeyboardButton("• JOIN CHANNEL •", url=invite.invite_link)]])
             m1 = await context.bot.send_message(chat_id=chat_id, text="HERE IS YOUR LINK! CLICK BELOW TO PROCEED", reply_markup=markup, protect_content=True)
             m2 = await context.bot.send_message(chat_id=chat_id, text="<u>Note: If the link is expired, please click the post link again to get a new one.</u>", parse_mode="HTML", protect_content=True)
-            context.job_queue.run_once(delete_job, 59, data={"chat_id": chat_id, "msg_ids": [m1.message_id, m2.message_id]})
+            
+            context.job_queue.run_once(
+                expire_and_delete_job, 
+                59, 
+                data={
+                    "chat_id": chat_id, 
+                    "msg_ids": [m1.message_id, m2.message_id],
+                    "ch_id": target_ch,
+                    "invite_url": invite.invite_link
+                }
+            )
         except Exception as e:
             logger.error(f"Link gen error: {e}")
             err = await query.message.reply_text("╭── ᴇʀʀᴏʀ\n╰─ ᴜsᴀɢᴇ: ɢɪᴠᴇ 'ᴀᴅᴅ ᴜsᴇʀs' ʀɪɢʜᴛs ᴛᴏ ʙᴏᴛ", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("ᴄʟᴏsᴇ", callback_data="close_msg")]]))
-            context.job_queue.run_once(delete_job, 15, data={"chat_id": chat_id, "msg_ids": [err.message_id]})
+            context.job_queue.run_once(expire_and_delete_job, 15, data={"chat_id": chat_id, "msg_ids": [err.message_id]})
 
 # --- COMMAND: /clone ---
 async def clone(update: Update, context: ContextTypes.DEFAULT_TYPE):
