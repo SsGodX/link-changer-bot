@@ -26,11 +26,12 @@ MAIN_BOT_USERNAME = ""
 
 DB_FILE = "link_changer.db"
 
-# --- DATABASE SETUP (WAL MODE) ---
+# --- THREAD-SAFE HIGH-PERFORMANCE DATABASE (NO HANG) ---
 def get_db():
-    conn = sqlite3.connect(DB_FILE, timeout=60.0, check_same_thread=False)
+    conn = sqlite3.connect(DB_FILE, timeout=20.0, check_same_thread=False)
     conn.execute("PRAGMA journal_mode=WAL;")
     conn.execute("PRAGMA synchronous=NORMAL;")
+    conn.execute("PRAGMA busy_timeout=5000;")
     return conn
 
 def init_db():
@@ -77,32 +78,34 @@ def run_web_server():
 def is_bot_admin(token: str, user_id: int) -> bool:
     if user_id == OWNER_ID:
         return True
-    with get_db() as conn:
-        c = conn.cursor()
-        c.execute("SELECT owner_id FROM bots WHERE token = ?", (token,))
-        row = c.fetchone()
-        return bool(row and row[0] == user_id)
+    try:
+        with get_db() as conn:
+            c = conn.cursor()
+            c.execute("SELECT owner_id FROM bots WHERE token = ?", (token,))
+            row = c.fetchone()
+            return bool(row and row[0] == user_id)
+    except Exception:
+        return False
 
 # --- AUTO EXPIRE LINK & DELETE MESSAGES (59s) ---
 async def expire_and_delete_job(context: ContextTypes.DEFAULT_TYPE):
     job_data = context.job.data
-    chat_id = job_data["chat_id"]
+    chat_id = job_data.get("chat_id")
     msg_ids = job_data.get("msg_ids", [])
     ch_id = job_data.get("ch_id")
     invite_url = job_data.get("invite_url")
 
-    # 1. Telegram चैनल पर लिंक को तुरंत Expire/Revoke करना
+    # 1. Revoke/Expire link instantly on channel
     if ch_id and invite_url:
         try:
             await context.bot.revoke_chat_invite_link(
                 chat_id=ch_id,
                 invite_link=invite_url
             )
-            logger.info(f"Revoked & Expired invite link successfully for channel {ch_id}")
-        except Exception as e:
-            logger.error(f"Failed to revoke invite link: {e}")
+        except Exception:
+            pass
 
-    # 2. यूज़र की चैट से दोनों मैसेज डिलीट करना
+    # 2. Delete messages safely
     for mid in msg_ids:
         try:
             await context.bot.delete_message(chat_id=chat_id, message_id=mid)
@@ -139,9 +142,12 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     token = context.bot.token
     is_clone = (token != MAIN_BOT_TOKEN)
 
-    with get_db() as conn:
-        conn.execute("INSERT OR IGNORE INTO users VALUES (?, ?)", (token, user_id))
-        conn.commit()
+    try:
+        with get_db() as conn:
+            conn.execute("INSERT OR IGNORE INTO users VALUES (?, ?)", (token, user_id))
+            conn.commit()
+    except Exception as e:
+        logger.error(f"User insert error: {e}")
 
     # Deep-link handling (?start=req_xxx or ?start=join_xxx)
     if context.args:
@@ -170,7 +176,6 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 return
 
             try:
-                # 60s Telegram API expire + bot auto revoke on 59s
                 expire_timestamp = int(time.time()) + 60
                 invite = await context.bot.create_chat_invite_link(
                     chat_id=ch_id,
@@ -179,11 +184,12 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     expire_date=expire_timestamp
                 )
                 markup = InlineKeyboardMarkup([
-                    [InlineKeyboardButton("• JOIN CHANNEL •", url=invite.invite_link)]
+                    [InlineKeyboardButton("• ᴊᴏɪɴ ᴄʜᴀɴɴᴇʟ •", url=invite.invite_link)]
                 ])
                 m1 = await update.message.reply_text(
-                    "HERE IS YOUR LINK! CLICK BELOW TO PROCEED",
+                    "<b>HERE IS YOUR LINK! CLICK BELOW TO PROCEED</b>",
                     reply_markup=markup,
+                    parse_mode="HTML",
                     protect_content=True
                 )
                 m2 = await update.message.reply_text(
@@ -192,7 +198,6 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     protect_content=True
                 )
                 
-                # 59 सेकंड का टाइमर: लिंक रिवोक करेगा और दोनों मैसेज डिलीट करेगा
                 context.job_queue.run_once(
                     expire_and_delete_job, 
                     59, 
@@ -211,11 +216,15 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 context.job_queue.run_once(expire_and_delete_job, 15, data={"chat_id": chat_id, "msg_ids": [err.message_id]})
                 return
 
-    with get_db() as conn:
-        c = conn.cursor()
-        c.execute("SELECT header_pic FROM bots WHERE token = ?", (token,))
-        row = c.fetchone()
-        header_pic = row[0] if row else None
+    header_pic = None
+    try:
+        with get_db() as conn:
+            c = conn.cursor()
+            c.execute("SELECT header_pic FROM bots WHERE token = ?", (token,))
+            row = c.fetchone()
+            header_pic = row[0] if row else None
+    except Exception:
+        pass
 
     if is_clone:
         text = (
@@ -266,7 +275,7 @@ async def addch(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         ch_id = int(context.args[0])
         chat_info = await context.bot.get_chat(ch_id)
-        title = chat_info.title or "Channel"
+        title = chat_info.title or "ᴄʜᴀɴɴᴇʟ"
         
         with get_db() as conn:
             conn.execute("INSERT OR REPLACE INTO channels (token, channel_id, channel_title, auto_approve) VALUES (?, ?, ?, 1)", (token, ch_id, title))
@@ -424,23 +433,23 @@ async def join_request_handler(update: Update, context: ContextTypes.DEFAULT_TYP
     chat_id = req.chat.id
     token = context.bot.token
 
-    with get_db() as conn:
-        c = conn.cursor()
-        c.execute("SELECT auto_approve FROM channels WHERE token = ? AND channel_id = ?", (token, chat_id))
-        ch_row = c.fetchone()
-        c.execute("SELECT auto_approve, approval_delay FROM bots WHERE token = ?", (token,))
-        bot_row = c.fetchone()
+    try:
+        with get_db() as conn:
+            c = conn.cursor()
+            c.execute("SELECT auto_approve FROM channels WHERE token = ? AND channel_id = ?", (token, chat_id))
+            ch_row = c.fetchone()
+            c.execute("SELECT auto_approve, approval_delay FROM bots WHERE token = ?", (token,))
+            bot_row = c.fetchone()
 
-    ch_auto = ch_row[0] if ch_row else 1
-    bot_auto, delay = (bot_row[0], bot_row[1]) if bot_row else (1, 0)
+        ch_auto = ch_row[0] if ch_row else 1
+        bot_auto, delay = (bot_row[0], bot_row[1]) if bot_row else (1, 0)
 
-    if ch_auto and bot_auto:
-        if delay > 0:
-            await asyncio.sleep(delay)
-        try:
+        if ch_auto and bot_auto:
+            if delay > 0:
+                await asyncio.sleep(delay)
             await req.approve()
-        except Exception as e:
-            logger.error(f"Join approval error: {e}")
+    except Exception as e:
+        logger.error(f"Join approval error: {e}")
 
 # --- COMMAND: /setpic & /unsetpic ---
 async def setpic(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -559,9 +568,20 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 member_limit=1, 
                 expire_date=expire_timestamp
             )
-            markup = InlineKeyboardMarkup([[InlineKeyboardButton("• JOIN CHANNEL •", url=invite.invite_link)]])
-            m1 = await context.bot.send_message(chat_id=chat_id, text="HERE IS YOUR LINK! CLICK BELOW TO PROCEED", reply_markup=markup, protect_content=True)
-            m2 = await context.bot.send_message(chat_id=chat_id, text="<u>Note: If the link is expired, please click the post link again to get a new one.</u>", parse_mode="HTML", protect_content=True)
+            markup = InlineKeyboardMarkup([[InlineKeyboardButton("• ᴊᴏɪɴ ᴄʜᴀɴɴᴇʟ •", url=invite.invite_link)]])
+            m1 = await context.bot.send_message(
+                chat_id=chat_id, 
+                text="<b>HERE IS YOUR LINK! CLICK BELOW TO PROCEED</b>", 
+                reply_markup=markup, 
+                parse_mode="HTML",
+                protect_content=True
+            )
+            m2 = await context.bot.send_message(
+                chat_id=chat_id, 
+                text="<u>Note: If the link is expired, please click the post link again to get a new one.</u>", 
+                parse_mode="HTML", 
+                protect_content=True
+            )
             
             context.job_queue.run_once(
                 expire_and_delete_job, 
