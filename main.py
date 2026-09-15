@@ -1,4 +1,3 @@
-
 import os
 import asyncio
 import sqlite3
@@ -22,7 +21,7 @@ OWNER_ID = int(os.environ.get("OWNER_ID", "0"))
 PORT = int(os.environ.get("PORT", 8080))
 
 UPDATE_CHANNEL_URL = "https://t.me/Ss_GodX"
-MAIN_BOT_USERNAME = ""  # कोड चालू होते ही अपने आप भर जाएगा
+MAIN_BOT_USERNAME = ""
 
 DB_FILE = "link_changer.db"
 
@@ -77,19 +76,18 @@ async def delete_job(context: ContextTypes.DEFAULT_TYPE):
 # --- UI & BUTTON BUILDERS ---
 def get_start_keyboard(is_clone: bool = False):
     buttons = [
-        [InlineKeyboardButton("📢 ᴜᴘᴅᴀᴛᴇ ᴄʜᴀɴɴᴇʟ", url=UPDATE_CHANNEL_URL)]
+        [InlineKeyboardButton("📢 UPDATE CHANNEL", url=UPDATE_CHANNEL_URL)]
     ]
     
-    # अगर यह किसी का क्लोन बॉट है, तो तुम्हारे मेन बॉट का क्लोन मेकर बटन जुड़ेगा
     if is_clone and MAIN_BOT_USERNAME:
         clone_promo_url = f"https://t.me/{MAIN_BOT_USERNAME}?start=clone"
         buttons.append([
-            InlineKeyboardButton("🤖 ᴄʀᴇᴀᴛᴇ ʏᴏᴜʀ ᴏᴡɴ ʙᴏᴛ", url=clone_promo_url)
+            InlineKeyboardButton("🤖 CREATE YOUR OWN BOT", url=clone_promo_url)
         ])
 
     buttons.append([
-        InlineKeyboardButton("🔗 ɢᴇᴛ ɪɴᴠɪᴛᴇ ʟɪɴᴋ", callback_data="get_link"),
-        InlineKeyboardButton("✖️ ᴄʟᴏsᴇ", callback_data="close_msg")
+        InlineKeyboardButton("🔗 GET INVITE LINK", callback_data="get_link"),
+        InlineKeyboardButton("✖️ CLOSE", callback_data="close_msg")
     ])
     
     return InlineKeyboardMarkup(buttons)
@@ -110,24 +108,24 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if is_clone:
         welcome_text = (
-            "╭─ ⚡ <b>ʟɪɴᴋ ᴄʜᴀɴɢᴇʀ • ᴄʟᴏɴᴇ ᴇᴅɪᴛɪᴏɴ</b>\n"
+            "╭─ ⚡ <b>LINK CHANGER • CLONE EDITION</b>\n"
             "│\n"
-            "├ 👋 <i>ʜᴇʟʟᴏ! ᴡᴇʟᴄᴏᴍᴇ ᴛᴏ ᴛʜɪs ʙᴏᴛ.</i>\n"
-            "├ 🛡️ <b>sᴛᴀᴛᴜs:</b> ᴏɴʟɪɴᴇ (24/7 sᴇᴄᴜʀᴇ)\n"
-            "├ 🤖 <i>यह एक क्लोन बॉट है! अपना खुद का बॉट बनाने</i>\n"
-            "│   <i>के लिए नीचे दिए गए बटन पर क्लिक करें।</i>\n"
+            "├ 👋 <i>Hello! Welcome to this bot.</i>\n"
+            "├ 🛡️ <b>Status:</b> ONLINE (24/7 Secure)\n"
+            "├ 🤖 <i>This is a cloned bot! Click the button below</i>\n"
+            "│   <i>to create your own personal bot.</i>\n"
             "│\n"
-            "╰─ ⏳ <i>ᴛʜɪs ᴍᴇssᴀɢᴇ ᴡɪʟʟ ᴀᴜᴛᴏ-ᴅᴇʟᴇᴛᴇ ɪɴ 59 sᴇᴄᴏɴᴅs...</i>"
+            "╰─ ⏳ <i>This message will auto-delete in 59 seconds...</i>"
         )
     else:
         welcome_text = (
-            "╭─ ⚡ <b>ʟɪɴᴋ ᴄʜᴀɴɢᴇʀ • ᴍᴀsᴛᴇʀ ᴇᴅɪᴛɪᴏɴ</b>\n"
+            "╭─ ⚡ <b>LINK CHANGER • MASTER EDITION</b>\n"
             "│\n"
-            "├ 👋 <i>ʜᴇʟʟᴏ! ᴡᴇʟᴄᴏᴍᴇ ᴛᴏ ᴏᴜʀ ᴏғғɪᴄɪᴀʟ ʙᴏᴛ.</i>\n"
-            "├ 🛡️ <b>sᴛᴀᴛᴜs:</b> ᴏɴʟɪɴᴇ (24/7 sᴇᴄᴜʀᴇ)\n"
-            "├ 💡 <i>ᴄʟɪᴄᴋ ᴛʜᴇ ʙᴜᴛᴛᴏɴs ʙᴇʟᴏᴡ ᴛᴏ ɴᴀᴠɪɢᴀᴛᴇ.</i>\n"
+            "├ 👋 <i>Hello! Welcome to our official bot.</i>\n"
+            "├ 🛡️ <b>Status:</b> ONLINE (24/7 Secure)\n"
+            "├ 💡 <i>Click the buttons below to navigate.</i>\n"
             "│\n"
-            "╰─ ⏳ <i>ᴛʜɪs ᴍᴇssᴀɢᴇ ᴡɪʟʟ ᴀᴜᴛᴏ-ᴅᴇʟᴇᴛᴇ ɪɴ 59 sᴇᴄᴏɴᴅs...</i>"
+            "╰─ ⏳ <i>This message will auto-delete in 59 seconds...</i>"
         )
 
     s_msg = await update.message.reply_text(
@@ -160,9 +158,9 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         if not row:
             err_text = (
-                "╭─ ⚠️ <b>ᴄʜᴀɴɴᴇʟ ɴᴏᴛ ᴄᴏɴғɪɢᴜʀᴇᴅ!</b>\n"
+                "╭─ ⚠️ <b>CHANNEL NOT CONFIGURED!</b>\n"
                 "│\n"
-                "╰─ 💡 एडमिन ने अभी तक चैनल सेट नहीं किया है।"
+                "╰─ 💡 The admin has not set up the channel yet."
             )
             msg = await query.message.reply_text(err_text, parse_mode="HTML")
             context.job_queue.run_once(delete_job, 15, data={"chat_id": chat_id, "msg_ids": [msg.message_id]})
@@ -177,24 +175,28 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             invite_url = invite.invite_link
 
             markup = InlineKeyboardMarkup([
-                [InlineKeyboardButton("🔷 ᴊᴏɪɴ ᴄʜᴀɴɴᴇʟ 🔷", url=invite_url)],
-                [InlineKeyboardButton("✖️ ᴄʟᴏsᴇ", callback_data="close_msg")]
+                [InlineKeyboardButton("• JOIN CHANNEL •", url=invite_url)]
             ])
 
-            res_text = (
-                "╭─ ⚡ <b>ʏᴏᴜʀ ɪɴᴠɪᴛᴇ ʟɪɴᴋ ɪs ʀᴇᴀᴅʏ!</b>\n"
-                "│\n"
-                f"├ 🔗 <b>ʟɪɴᴋ:</b> <code>{invite_url}</code>\n"
-                "│\n"
-                "├ 💡 <i>ᴛᴀᴘ ᴏɴ ᴛʜᴇ ʟɪɴᴋ ᴛᴏ ᴄᴏᴘʏ ᴏʀ ᴜsᴇ ʙᴜᴛᴛᴏɴ!</i>\n"
-                "╰─ ⏳ <i>ᴛʜɪs ᴍᴇssᴀɢᴇ ᴡɪʟʟ ᴀᴜᴛᴏ-ᴅᴇʟᴇᴛᴇ ɪɴ 59 sᴇᴄᴏɴᴅs...</i>"
+            msg1 = await context.bot.send_message(
+                chat_id=chat_id,
+                text="HERE IS YOUR LINK! CLICK BELOW TO PROCEED",
+                reply_markup=markup,
+                protect_content=True
             )
 
-            res_msg = await query.message.reply_text(res_text, reply_markup=markup, parse_mode="HTML", protect_content=True)
-            context.job_queue.run_once(delete_job, 59, data={"chat_id": chat_id, "msg_ids": [res_msg.message_id]})
+            msg2 = await context.bot.send_message(
+                chat_id=chat_id,
+                text="<u>Note: If the link is expired, please click the post link again to get a new one.</u>",
+                parse_mode="HTML",
+                protect_content=True
+            )
+
+            context.job_queue.run_once(delete_job, 59, data={"chat_id": chat_id, "msg_ids": [msg1.message_id, msg2.message_id]})
+
         except Exception as e:
             logger.error(f"Invite Link Error: {e}")
-            err = await query.message.reply_text("❌ <b>Error:</b> बॉट को चैनल में Admin (Add Users rights) बनायें!", parse_mode="HTML")
+            err = await query.message.reply_text("❌ <b>Error:</b> Please promote this bot to Admin in your channel with 'Add Users' permission!", parse_mode="HTML")
             context.job_queue.run_once(delete_job, 15, data={"chat_id": chat_id, "msg_ids": [err.message_id]})
 
 # --- BOT CONFIGURATION COMMANDS ---
@@ -217,7 +219,7 @@ async def setchannel(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if not context.args:
-        await update.message.reply_text("╭─ ᴇʀʀᴏʀ\n╰ ᴜsᴀɢᴇ: /setchannel -100xxxxxxxxxx")
+        await update.message.reply_text("╭─ ERROR\n╰ Usage: /setchannel -100xxxxxxxxxx")
         return
 
     try:
@@ -227,14 +229,14 @@ async def setchannel(update: Update, context: ContextTypes.DEFAULT_TYPE):
             conn.commit()
 
         await update.message.reply_text(
-            "╭─ ᴄʜᴀɴɴᴇʟ ᴄᴏɴғɪɢᴜʀᴇᴅ\n"
+            "╭─ CHANNEL CONFIGURED\n"
             "│\n"
-            f"├ 🆔 <b>ᴄʜᴀɴɴᴇʟ ɪᴅ:</b> <code>{ch_id}</code>\n"
-            "╰─ ✅ <b>सफलतापूर्वक सेव कर दिया गया!</b>",
+            f"├ 🆔 <b>Channel ID:</b> <code>{ch_id}</code>\n"
+            "╰─ ✅ <b>Saved successfully!</b>",
             parse_mode="HTML"
         )
     except ValueError:
-        await update.message.reply_text("❌ कृपया सही न्यूमेरिक ID (-100...) दर्ज करें।")
+        await update.message.reply_text("❌ Please enter a valid numeric channel ID starting with -100.")
 
 # --- MYBOT STATUS (FOR CLONE OWNERS) ---
 async def mybot(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -247,17 +249,17 @@ async def mybot(update: Update, context: ContextTypes.DEFAULT_TYPE):
         c.execute("SELECT channel_id FROM bot_channels WHERE token = ?", (token,))
         ch_row = c.fetchone()
 
-    ch_text = f"<code>{ch_row[0]}</code>" if ch_row else "ɴᴏᴛ sᴇᴛ (ᴜsᴇ /setchannel)"
+    ch_text = f"<code>{ch_row[0]}</code>" if ch_row else "NOT SET (Use /setchannel)"
     bot_name = f"@{bot_row[1]}" if bot_row else f"@{context.bot.username}"
 
     res = (
-        "╭─ ⚙️ <b>ʏᴏᴜʀ ʙᴏᴛ sᴇᴛᴛɪɴɢs</b>\n"
+        "╭─ ⚙️ <b>YOUR BOT SETTINGS</b>\n"
         "│\n"
-        f"├ 🤖 <b>ʙᴏᴛ:</b> {bot_name}\n"
-        f"├ 📢 <b>ᴄʜᴀɴɴᴇʟ:</b> {ch_text}\n"
-        "├ ⏱️ <b>ᴀᴜᴛᴏ-ᴅᴇʟᴇᴛᴇ:</b> 59 sᴇᴄᴏɴᴅs\n"
+        f"├ 🤖 <b>Bot:</b> {bot_name}\n"
+        f"├ 📢 <b>Channel:</b> {ch_text}\n"
+        "├ ⏱️ <b>Auto-Delete:</b> 59 seconds\n"
         "│\n"
-        "╰─ 💡 /setchannel <i>सेंड करके कभी भी चैनल बदल सकते हैं।</i>"
+        "╰─ 💡 <i>Send /setchannel to update your channel ID anytime.</i>"
     )
     await update.message.reply_text(res, parse_mode="HTML")
 
@@ -267,13 +269,13 @@ async def clone(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not context.args:
         help_msg = (
-            "╭─ 🤖 <b>ᴄʟᴏɴᴇ ʏᴏᴜʀ ᴏᴡɴ ʙᴏᴛ</b>\n"
+            "╭─ 🤖 <b>CLONE YOUR OWN BOT</b>\n"
             "│\n"
-            "├ 1. @BotFather पर जाकर नया बॉट बनाएँ।\n"
-            "├ 2. अपना बॉट टोकन कॉपी करें।\n"
-            "├ 3. यहाँ भेजें: <code>/clone YOUR_BOT_TOKEN</code>\n"
+            "├ 1. Open @BotFather and create a new bot.\n"
+            "├ 2. Copy your Bot Token.\n"
+            "├ 3. Send here: <code>/clone YOUR_BOT_TOKEN</code>\n"
             "│\n"
-            "╰─ ⚡ <i>आपका अपना लिंक चेंजर बॉट तुरंत लाइव हो जाएगा!</i>"
+            "╰─ ⚡ <i>Your personal Link Changer Bot will be live instantly!</i>"
         )
         await update.message.reply_text(help_msg, parse_mode="HTML")
         return
@@ -286,9 +288,9 @@ async def clone(update: Update, context: ContextTypes.DEFAULT_TYPE):
         bot_info = await temp_app.bot.get_me()
 
         clone_commands = [
-            BotCommand("start", "⚡ sᴛᴀʀᴛ ᴛʜᴇ ʙᴏᴛ"),
-            BotCommand("setchannel", "📢 sᴇᴛ ʏᴏᴜʀ ᴄʜᴀɴɴᴇʟ ɪᴅ"),
-            BotCommand("mybot", "⚙️ ᴠɪᴇᴡ ʏᴏᴜʀ ʙᴏᴛ sᴇᴛᴛɪɴɢs"),
+            BotCommand("start", "⚡ Start the bot"),
+            BotCommand("setchannel", "📢 Set channel ID"),
+            BotCommand("mybot", "⚙️ View bot settings"),
         ]
         await temp_app.bot.set_my_commands(clone_commands)
         await temp_app.shutdown()
@@ -300,24 +302,24 @@ async def clone(update: Update, context: ContextTypes.DEFAULT_TYPE):
         asyncio.create_task(run_cloned_bot(new_token))
 
         res = (
-            "╭─ 🎉 <b>ʙᴏᴛ ᴄʟᴏɴᴇᴅ sᴜᴄᴄᴇssғᴜʟʟʏ!</b>\n"
+            "╭─ 🎉 <b>BOT CLONED SUCCESSFULLY!</b>\n"
             "│\n"
-            f"├ 🤖 <b>ʙᴏᴛ:</b> @{bot_info.username}\n"
-            f"├ 👑 <b>ᴏᴡɴᴇʀ ɪᴅ:</b> <code>{user_id}</code>\n"
-            "├ 📋 <b>साइड मेन्यू कमांड्स:</b> ऑटोमैटिक सेट हो गईं!\n"
+            f"├ 🤖 <b>Bot:</b> @{bot_info.username}\n"
+            f"├ 👑 <b>Owner ID:</b> <code>{user_id}</code>\n"
+            "├ 📋 <b>Side Menu Commands:</b> Automatically configured!\n"
             "│\n"
-            "├ <b>अगला कदम:</b>\n"
-            f"├ 1. अपने बॉट @{bot_info.username} को अपने चैनल में एडमिन बनाएँ।\n"
-            "├ 2. अपने बॉट में जाकर कमांड दें:\n"
+            "├ <b>Next Steps:</b>\n"
+            f"├ 1. Promote @{bot_info.username} to Admin in your channel.\n"
+            "├ 2. Open your bot and send:\n"
             "│     <code>/setchannel -100xxxxxxxxxx</code>\n"
             "│\n"
-            "╰─ 🚀 <b>आपका बॉट पूरी तरह तैयार है!</b>"
+            "╰─ 🚀 <b>Your bot is fully ready to use!</b>"
         )
         await update.message.reply_text(res, parse_mode="HTML")
 
     except Exception as e:
         logger.error(f"Clone error: {e}")
-        await update.message.reply_text("❌ <b>अमान्य टोकन!</b> कृपया @BotFather से सही टोकन कॉपी करें।", parse_mode="HTML")
+        await update.message.reply_text("❌ <b>Invalid Token!</b> Please provide a valid bot token from @BotFather.", parse_mode="HTML")
 
 # --- CLONE BOT RUNNER ---
 async def run_cloned_bot(token: str):
@@ -331,9 +333,9 @@ async def run_cloned_bot(token: str):
         await clone_app.initialize()
         
         clone_commands = [
-            BotCommand("start", "⚡ sᴛᴀʀᴛ ᴛʜᴇ ʙᴏᴛ"),
-            BotCommand("setchannel", "📢 sᴇᴛ ʏᴏᴜʀ ᴄʜᴀɴɴᴇʟ ɪᴅ"),
-            BotCommand("mybot", "⚙️ ᴠɪᴇᴡ ʏᴏᴜʀ ʙᴏᴛ sᴇᴛᴛɪɴɢs"),
+            BotCommand("start", "⚡ Start the bot"),
+            BotCommand("setchannel", "📢 Set channel ID"),
+            BotCommand("mybot", "⚙️ View bot settings"),
         ]
         try:
             await clone_app.bot.set_my_commands(clone_commands)
@@ -355,9 +357,9 @@ async def start_all_bots(main_app):
     MAIN_BOT_USERNAME = bot_info.username
 
     main_commands = [
-        BotCommand("start", "⚡ sᴛᴀʀᴛ ᴛʜᴇ ʙᴏᴛ"),
-        BotCommand("clone", "🤖 ᴄʟᴏɴᴇ ʏᴏᴜʀ ᴏᴡɴ ʙᴏᴛ"),
-        BotCommand("setchannel", "📢 sᴇᴛ ᴍᴀɪɴ ᴄʜᴀɴɴᴇʟ ɪᴅ"),
+        BotCommand("start", "⚡ Start the bot"),
+        BotCommand("clone", "🤖 Clone your own bot"),
+        BotCommand("setchannel", "📢 Set channel ID"),
     ]
     try:
         await main_app.bot.set_my_commands(main_commands)
